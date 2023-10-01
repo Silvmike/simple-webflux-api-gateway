@@ -15,7 +15,6 @@ import ru.silvmike.gateway.demo.config.WebClientConfiguration;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -27,18 +26,17 @@ public class DemoGatewayApplication {
 	private static final String URL_ONE = "https://gist.githubusercontent.com/Silvmike/2ac76a3d338e01ec947a3d02bf7bf65b/raw/4c9241a31c7619aac39806451c14b191465d3466/gistfile1.txt";
 	private static final String URL_TWO = "https://gist.githubusercontent.com/Silvmike/04cf3975182e99352e8182fd070d72d7/raw/5301781aeea22a85b58bf6d8380104dc80de8fa4/gistfile1.txt";
 
-	private final Scheduler routeScheduler = Schedulers.newParallel("route", 100);
+	private final Scheduler scheduler = Schedulers.newParallel("transform");
 
 	@GetMapping("/test")
 	public Mono<ResponseEntity<String>> proxy(ProxyExchange<byte[]> proxy) throws Exception {
 		proxy = proxy.sensitive("Host");
 		return Flux.merge(
-			Arrays.asList(
-				proxy.uri(URL_ONE).get(),
-				proxy.uri(URL_TWO).get()
-			)
+			proxy.uri(URL_ONE).get(),
+			proxy.uri(URL_TWO).get()
 		)
 		.bufferTimeout(2, Duration.of(5, ChronoUnit.SECONDS))
+		.publishOn(scheduler)
 		.flatMap(Flux::fromIterable)
 		.map(r -> new String(Objects.requireNonNull(r.getBody())))
 		.collect(Collectors.joining(","))
@@ -46,8 +44,7 @@ public class DemoGatewayApplication {
 			ResponseEntity.status(200)
 				.header("Content-Type", "application/json")
 				.body(String.format("{ \"names\": [%s] }", concatenated))
-		)
-		.subscribeOn(routeScheduler);
+		);
 	}
 
 	public static void main(String[] args) {
